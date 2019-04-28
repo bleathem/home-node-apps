@@ -3,6 +3,12 @@ const inspect = require('util').inspect;
 const _ = require('lodash');
 const chalk = require('chalk');
 const { distanceFromHome } = require('./distance');
+const moment = require('moment');
+
+if (typeof localStorage === 'undefined' || localStorage === null) {
+  const LocalStorage = require('node-localstorage').LocalStorage;
+  localStorage = new LocalStorage('./data');
+}
 
 // const qs =
 //   'attributes=cab:Mega%20Cab&func=SALES&includeIncentives=N&matchType=X&modelYearCode=IUT201914&optionCodes=ESA&pageNumber=1&pageSize=10&radius=100&sortBy=0&zip=95120';
@@ -180,10 +186,14 @@ function printVehicle(v) {
   const vehicleDesc = v.vehicleDesc
     .replace('LARAMIE', chalk.black.bgWhite('LARAMIE'))
     .replace('BIG HORN', chalk.white.bgRed('BIG HORN'));
+  const isNew = (Date.now() - v.firstSeen.getTime()) / 60000 < 60; // minutes
   console.log(
+    isNew ? chalk.white.bgGreen('** New **') : '',
     v.modelYear,
     vehicleDesc,
-    `(${v.zip}, ${v.dealerState}, ${v.distanceFromHome} miles)`
+    `(${v.zip}, ${v.dealerState}, ${v.distanceFromHome} miles) - ${moment(
+      v.firstSeen
+    ).fromNow()} ago`
   );
   console.log('   ', v.website);
 }
@@ -195,10 +205,22 @@ function setDistanceFromHome(v) {
   v.distanceFromHome = numberFormatter.format(distanceFromHome(v.lat, v.lon));
 }
 
+function updateHistory(vehicles) {
+  const history = JSON.parse(localStorage.getItem('vehicles') || '{}');
+  vehicles.forEach(v => {
+    const h = history[v.vin];
+    v.firstSeen = h ? new Date(h.firstSeen) : new Date();
+    history[v.vin] = v;
+  });
+  // console.log(history);
+  localStorage.setItem('vehicles', JSON.stringify(history));
+}
+
 async function main() {
   const vehicles = await getAllVehicles();
   const sixSeaters = findMatches(vehicles);
   sixSeaters.forEach(setDistanceFromHome);
+  updateHistory(sixSeaters);
 
   sixSeaters.forEach(printVehicle);
 
