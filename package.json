@@ -1,23 +1,19 @@
 {
+  "private": true,
+  "license": "UNLICENSED",
+  "workspaces": [
+    "packages/*/*",
+    "packages/[^@]*"
+  ],
   "name": "ramtrucks",
-  "version": "0.0.0",
-  "description": "ramtrucks.com screen scraper",
-  "main": "index.js",
   "scripts": {
-    "start": "node fetch.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "chalk": "^2.4.2",
-    "eslint": "^5.16.0",
-    "lodash": "^4.17.11",
-    "moment": "^2.24.0",
-    "node-fetch": "^2.4.1",
-    "node-localstorage": "^1.3.1"
+    "build": "lerna run build",
+    "clean": "lerna run clean",
+    "lint": "lerna run lint",
+    "test:watch": "lerna run test:watch",
+    "test": "lerna run test"
   },
   "devDependencies": {
-    "@types/node-fetch": "^2.3.3"
+    "lerna": "^3.13.1"
   }
 }
