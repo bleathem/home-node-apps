@@ -1,6 +1,8 @@
 const fetch = require('node-fetch');
 const inspect = require('util').inspect;
 const _ = require('lodash');
+const chalk = require('chalk');
+const { distanceFromHome } = require('./distance');
 
 // const qs =
 //   'attributes=cab:Mega%20Cab&func=SALES&includeIncentives=N&matchType=X&modelYearCode=IUT201914&optionCodes=ESA&pageNumber=1&pageSize=10&radius=100&sortBy=0&zip=95120';
@@ -44,8 +46,8 @@ const options = {
   pageNumber: '1',
   pageSize: '1000',
   radius: '150',
-  // variation: 'BIG HORN,LARAMIE',
-  variation: 'LARAMIE',
+  variation: 'BIG HORN,LARAMIE',
+  // variation: 'LARAMIE',
   // variation: 'BIG HORN',
   sortBy: '0'
 };
@@ -171,23 +173,40 @@ function findMatches(vehicles) {
   return sixSeaters;
 }
 
+function printVehicle(v) {
+  v.modelYearCode = options.modelYearCode;
+  v.url = getUrl(v);
+  // console.log(inspect(v, false, Infinity, true));
+  const vehicleDesc = v.vehicleDesc
+    .replace('LARAMIE', chalk.black.bgWhite('LARAMIE'))
+    .replace('BIG HORN', chalk.white.bgRed('BIG HORN'));
+  console.log(
+    v.modelYear,
+    vehicleDesc,
+    `(${v.zip}, ${v.dealerState}, ${v.distanceFromHome} miles)`
+  );
+  console.log('   ', v.website);
+}
+
+function setDistanceFromHome(v) {
+  const numberFormatter = new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 0
+  });
+  v.distanceFromHome = numberFormatter.format(distanceFromHome(v.lat, v.lon));
+}
+
 async function main() {
   const vehicles = await getAllVehicles();
   const sixSeaters = findMatches(vehicles);
+  sixSeaters.forEach(setDistanceFromHome);
 
-  sixSeaters.forEach(v => {
-    v.modelYearCode = options.modelYearCode;
-    v.url = getUrl(v);
-    // console.log(
-    //   inspect(_.pick(v, ['vehicleDesc', 'website']), false, Infinity, true)
-    // );
-    console.log(v.modelYear, v.vehicleDesc, `(${v.zip}, ${v.dealerState})`);
-    console.log('   ', v.website);
-  });
+  sixSeaters.forEach(printVehicle);
 
   // console.log(inspect(sixSeaters[0], false, Infinity, true));
 
-  console.log(vehicles.length, sixSeaters.length);
+  console.log(
+    `vehicles: ${vehicles.length}, six seaters: ${sixSeaters.length}`
+  );
 }
 
 function getUrl({ modelYearCode, vin, dealerCode, statusCode }) {
