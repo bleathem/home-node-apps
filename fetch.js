@@ -25,7 +25,6 @@ const zips = [
   93726, // Fresno
   93305, // Bakersfield
   93534, // Lancaster
-  92553, // Morena Valley
   92101, // San Diego
   92311, // Barstow
   93549, // Olancha
@@ -51,7 +50,7 @@ const options = {
   sortBy: '0'
 };
 
-async function getByZip(zip, year) {
+async function fetchVehicles(zip, year) {
   const qs = Object.entries({
     ...options,
     ...{
@@ -90,6 +89,15 @@ async function fetchDealers(zip) {
   }, {});
 }
 
+async function fetchByZip(zip) {
+  // console.log(`Fetching zip ${zip}...`);
+  const years = [2018, 2019];
+  return Promise.all([
+    fetchDealers(zip),
+    ...years.map(year => fetchVehicles(zip, year))
+  ]);
+}
+
 function setWebsite(vehicle, dealers) {
   const dealer = dealers[vehicle.dealerCode];
   if (dealer) {
@@ -101,14 +109,28 @@ function setWebsite(vehicle, dealers) {
   return vehicle;
 }
 
-async function main() {
-  const years = [2018, 2019];
+const asyncLimit = (fn, n) => {
+  let pendingPromises = [];
+  return async function(...args) {
+    while (pendingPromises.length >= n) {
+      await Promise.race(pendingPromises).catch(() => {});
+    }
+
+    const p = fn.apply(this, args);
+    pendingPromises.push(p);
+    await p.catch(() => {});
+    pendingPromises = pendingPromises.filter(pending => pending !== p);
+    return p;
+  };
+};
+
+async function getAllVehicles() {
+  const limitedFetchByZip = asyncLimit(fetchByZip, 20);
+  // const requests = zips.map(fetchByZip);
+  const requests = zips.map(limitedFetchByZip);
   const vehicles = await Promise.all(
-    zips.map(zip =>
-      Promise.all([
-        fetchDealers(zip),
-        ...years.map(year => getByZip(zip, year))
-      ]).then(args => {
+    requests.map(byZip =>
+      byZip.then(args => {
         const dealers = args[0];
         const vehiclesByYear = args.slice(1);
         const vehicles = vehiclesByYear.map(vehicles =>
@@ -127,7 +149,11 @@ async function main() {
       return acc;
     }, {})
   );
-  const sixSeaters = uniques.filter(v => {
+  return uniques;
+}
+
+function findMatches(vehicles) {
+  const sixSeaters = vehicles.filter(v => {
     // console.log('vehicle:', v.specs.attributes);
     const capacity = v.specs.attributes.filter(a => a.name === 'Seats')[0];
     // console.log(capacity);
@@ -142,6 +168,13 @@ async function main() {
     return a.website.localeCompare(b.website);
   });
 
+  return sixSeaters;
+}
+
+async function main() {
+  const vehicles = await getAllVehicles();
+  const sixSeaters = findMatches(vehicles);
+
   sixSeaters.forEach(v => {
     v.modelYearCode = options.modelYearCode;
     v.url = getUrl(v);
@@ -154,7 +187,7 @@ async function main() {
 
   // console.log(inspect(sixSeaters[0], false, Infinity, true));
 
-  console.log(vehicles.length, uniques.length, sixSeaters.length);
+  console.log(vehicles.length, sixSeaters.length);
 }
 
 function getUrl({ modelYearCode, vin, dealerCode, statusCode }) {
