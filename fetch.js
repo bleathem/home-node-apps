@@ -1,0 +1,166 @@
+const fetch = require('node-fetch');
+const inspect = require('util').inspect;
+const _ = require('lodash');
+
+// const qs =
+//   'attributes=cab:Mega%20Cab&func=SALES&includeIncentives=N&matchType=X&modelYearCode=IUT201914&optionCodes=ESA&pageNumber=1&pageSize=10&radius=100&sortBy=0&zip=95120';
+
+// https://www.easymapmaker.com/
+const zips = [
+  // 95032, // Los Gatos
+  96001, // Redding
+  95928, // Chico
+  95482, // Ukiah
+  95548, // Klamath
+  96024, // Douglas City
+  95540, // Fortuna
+  96161, // Truckee
+  96130, // Susanville
+  95901, // Marysville
+  95815, // Sacramento
+  94954, // Petaluma
+  95315, // Livingston
+  93514, // Bishop
+  93954, // San Lucas
+  93726, // Fresno
+  93305, // Bakersfield
+  93534, // Lancaster
+  92553, // Morena Valley
+  92101, // San Diego
+  92311, // Barstow
+  93549, // Olancha
+  93401, // San Luis
+  93101, // Santa Barbara
+  92280, // Rice
+  92234 // Palm Springs
+];
+
+const options = {
+  attributes: 'cab:Mega Cab',
+  func: 'SALES',
+  includeIncentives: 'N',
+  matchType: 'X',
+  optionCodes: 'ESA', // 6.4L Heavy Duty V8 HEMI
+  // optionCodes: 'ETK', // 6.7L Cummins Diesel
+  pageNumber: '1',
+  pageSize: '1000',
+  radius: '150',
+  // variation: 'BIG HORN,LARAMIE',
+  variation: 'LARAMIE',
+  // variation: 'BIG HORN',
+  sortBy: '0'
+};
+
+async function getByZip(zip, year) {
+  const qs = Object.entries({
+    ...options,
+    ...{
+      zip: zip,
+      modelYearCode: `IUT${year}14`
+    }
+  })
+    .map(([key, val]) => {
+      // const val = options[key];
+      return `${key}=${val}`;
+    })
+    .join('&');
+  const json = await fetch(
+    `https://www.ramtrucks.com/hostd/inventory/getinventoryresults.json?${qs}`,
+    {
+      body: null,
+      method: 'GET'
+    }
+  ).then(res => res.json());
+  return json.result.data.vehicles.map(v => {
+    v.zip = zip;
+    return v;
+  });
+}
+
+async function fetchDealers(zip) {
+  const json = await fetch(
+    `https://www.ramtrucks.com/bdlws/MDLSDealerLocator?zipCode=${zip}&func=SALES&radius=150&brandCode=R&resultsPerPage=999`,
+    {
+      method: 'GET'
+    }
+  ).then(res => res.json());
+  return json.dealer.reduce((acc, d) => {
+    acc[d.dealerCode] = d;
+    return acc;
+  }, {});
+}
+
+function setWebsite(vehicle, dealers) {
+  const dealer = dealers[vehicle.dealerCode];
+  if (dealer) {
+    vehicle.website = `${dealer.website}/catcher.esl?vin=${vehicle.vin}`;
+    vehicle.dealerState = dealer.dealerState;
+  } else {
+    vehicle.website = 'not-found';
+  }
+  return vehicle;
+}
+
+async function main() {
+  const years = [2018, 2019];
+  const vehicles = await Promise.all(
+    zips.map(zip =>
+      Promise.all([
+        fetchDealers(zip),
+        ...years.map(year => getByZip(zip, year))
+      ]).then(args => {
+        const dealers = args[0];
+        const vehiclesByYear = args.slice(1);
+        const vehicles = vehiclesByYear.map(vehicles =>
+          vehicles.map(v => setWebsite(v, dealers))
+        );
+        return [].concat(...vehicles).filter(vehicle => {
+          return vehicle.dealerState === 'CA';
+        });
+      })
+    )
+  ).then(all => all.reduce((acc, list) => [...acc, ...list], []));
+
+  const uniques = Object.values(
+    vehicles.reduce((acc, v) => {
+      acc[v.vin] = v;
+      return acc;
+    }, {})
+  );
+  const sixSeaters = uniques.filter(v => {
+    // console.log('vehicle:', v.specs.attributes);
+    const capacity = v.specs.attributes.filter(a => a.name === 'Seats')[0];
+    // console.log(capacity);
+    return capacity.value === 6;
+  });
+
+  sixSeaters.sort((a, b) => {
+    const ret = a.modelYear - b.modelYear;
+    if (ret !== 0) {
+      return ret;
+    }
+    return a.website.localeCompare(b.website);
+  });
+
+  sixSeaters.forEach(v => {
+    v.modelYearCode = options.modelYearCode;
+    v.url = getUrl(v);
+    // console.log(
+    //   inspect(_.pick(v, ['vehicleDesc', 'website']), false, Infinity, true)
+    // );
+    console.log(v.modelYear, v.vehicleDesc, `(${v.zip}, ${v.dealerState})`);
+    console.log('   ', v.website);
+  });
+
+  // console.log(inspect(sixSeaters[0], false, Infinity, true));
+
+  console.log(vehicles.length, uniques.length, sixSeaters.length);
+}
+
+function getUrl({ modelYearCode, vin, dealerCode, statusCode }) {
+  return `https://www.ramtrucks.com/new-inventory/vehicle-details.html?modelYearCode=${modelYearCode}&vin=${vin}&dealerCode=${dealerCode}&radius=100&matchType=X&statusCode=${statusCode}`;
+}
+
+// https://www.normandinchryslerjeep.net/catcher.esl?vin=3C6UR5DL0JG375366
+// https://www.ramtrucks.com/new-inventory/vehicle-details.html?modelYearCode=IUT201814&vin=3C6UR5DL0JG375366&dealerCode=08564&radius=100&matchType=X&statusCode=KZX
+main().catch(console.error);
