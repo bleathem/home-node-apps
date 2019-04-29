@@ -1,13 +1,42 @@
-const fetch = require('node-fetch');
-const inspect = require('util').inspect;
-const _ = require('lodash');
-const chalk = require('chalk');
-const { distanceFromHome } = require('./distance');
-const moment = require('moment');
+import fetch from 'node-fetch';
+// import { inspect } from 'util';
+import * as _ from 'lodash';
+import chalk from 'chalk';
+import { distanceFromHome } from './distance';
+import * as moment from 'moment';
+import { LocalStorage } from 'node-localstorage';
+let localStorage: LocalStorage;
 
-if (typeof localStorage === 'undefined' || localStorage === null) {
-  const LocalStorage = require('node-localstorage').LocalStorage;
-  localStorage = new LocalStorage('./data');
+async function load() {
+  if (typeof localStorage === 'undefined' || localStorage === null) {
+    let nodeLocalStorage = await import('node-localstorage');
+    const LocalStorage = nodeLocalStorage.LocalStorage;
+    localStorage = new LocalStorage('./data');
+  }
+}
+
+interface Vehicle {
+  lat: number;
+  lon: number;
+  distanceFromHome: any;
+  firstSeen: any;
+  vehicleDesc: string;
+  url: string;
+  modelYearCode: string;
+  statusCode: string;
+  modelYear: number;
+  specs: { attributes: [{ name: string; value: any }] };
+  vin: string;
+  dealerState: string;
+  website: string;
+  zip: number;
+  dealerCode: string;
+}
+
+interface Dealer {
+  dealerState: string;
+  website: string;
+  dealerCode: string;
 }
 
 // const qs =
@@ -55,10 +84,11 @@ const options = {
   variation: 'BIG HORN,LARAMIE',
   // variation: 'LARAMIE',
   // variation: 'BIG HORN',
-  sortBy: '0'
+  sortBy: '0',
+  modelYearCode: ''
 };
 
-async function fetchVehicles(zip, year) {
+async function fetchVehicles(zip: number, year: number) {
   const qs = Object.entries({
     ...options,
     ...{
@@ -72,32 +102,31 @@ async function fetchVehicles(zip, year) {
     })
     .join('&');
   const json = await fetch(
-    `https://www.ramtrucks.com/hostd/inventory/getinventoryresults.json?${qs}`,
-    {
-      body: null,
-      method: 'GET'
-    }
+    `https://www.ramtrucks.com/hostd/inventory/getinventoryresults.json?${qs}`
   ).then(res => res.json());
-  return json.result.data.vehicles.map(v => {
+  return json.result.data.vehicles.map((v: Vehicle) => {
     v.zip = zip;
     return v;
   });
 }
 
-async function fetchDealers(zip) {
+async function fetchDealers(zip: number) {
   const json = await fetch(
     `https://www.ramtrucks.com/bdlws/MDLSDealerLocator?zipCode=${zip}&func=SALES&radius=150&brandCode=R&resultsPerPage=999`,
     {
       method: 'GET'
     }
   ).then(res => res.json());
-  return json.dealer.reduce((acc, d) => {
-    acc[d.dealerCode] = d;
-    return acc;
-  }, {});
+  return json.dealer.reduce(
+    (acc: { [dealerCode: string]: Dealer }, d: Dealer) => {
+      acc[d.dealerCode] = d;
+      return acc;
+    },
+    {}
+  );
 }
 
-async function fetchByZip(zip) {
+async function fetchByZip(zip: number) {
   // console.log(`Fetching zip ${zip}...`);
   const years = [2018, 2019];
   return Promise.all([
@@ -106,7 +135,10 @@ async function fetchByZip(zip) {
   ]);
 }
 
-function setWebsite(vehicle, dealers) {
+function setWebsite(
+  vehicle: Vehicle,
+  dealers: { [dealerCode: string]: Dealer }
+) {
   const dealer = dealers[vehicle.dealerCode];
   if (dealer) {
     vehicle.website = `${dealer.website}/catcher.esl?vin=${vehicle.vin}`;
@@ -117,9 +149,9 @@ function setWebsite(vehicle, dealers) {
   return vehicle;
 }
 
-const asyncLimit = (fn, n) => {
-  let pendingPromises = [];
-  return async function(...args) {
+const asyncLimit = function(fn: any, n: number) {
+  let pendingPromises: Promise<any>[] = [];
+  return async function(this: any, ...args: any) {
     while (pendingPromises.length >= n) {
       await Promise.race(pendingPromises).catch(() => {});
     }
@@ -132,7 +164,7 @@ const asyncLimit = (fn, n) => {
   };
 };
 
-async function getAllVehicles() {
+async function getAllVehicles(): Promise<Vehicle[]> {
   const limitedFetchByZip = asyncLimit(fetchByZip, 20);
   // const requests = zips.map(fetchByZip);
   const requests = zips.map(limitedFetchByZip);
@@ -141,10 +173,10 @@ async function getAllVehicles() {
       byZip.then(args => {
         const dealers = args[0];
         const vehiclesByYear = args.slice(1);
-        const vehicles = vehiclesByYear.map(vehicles =>
+        const vehicles = vehiclesByYear.map((vehicles: Vehicle[]) =>
           vehicles.map(v => setWebsite(v, dealers))
         );
-        return [].concat(...vehicles).filter(vehicle => {
+        return [].concat(...vehicles).filter((vehicle: Vehicle) => {
           return vehicle.dealerState === 'CA';
         });
       })
@@ -152,18 +184,20 @@ async function getAllVehicles() {
   ).then(all => all.reduce((acc, list) => [...acc, ...list], []));
 
   const uniques = Object.values(
-    vehicles.reduce((acc, v) => {
+    vehicles.reduce((acc: { [vin: string]: Vehicle }, v: Vehicle) => {
       acc[v.vin] = v;
       return acc;
     }, {})
-  );
+  ) as Vehicle[];
   return uniques;
 }
 
-function findMatches(vehicles) {
+function findMatches(vehicles: Vehicle[]) {
   const sixSeaters = vehicles.filter(v => {
     // console.log('vehicle:', v.specs.attributes);
-    const capacity = v.specs.attributes.filter(a => a.name === 'Seats')[0];
+    const capacity = v.specs.attributes.filter(
+      (attr: { name: string }) => attr.name === 'Seats'
+    )[0];
     // console.log(capacity);
     return capacity.value === 6;
   });
@@ -179,7 +213,7 @@ function findMatches(vehicles) {
   return sixSeaters;
 }
 
-function printVehicle(v) {
+function printVehicle(v: Vehicle) {
   v.modelYearCode = options.modelYearCode;
   v.url = getUrl(v);
   // console.log(inspect(v, false, Infinity, true));
@@ -198,14 +232,14 @@ function printVehicle(v) {
   console.log('   ', v.website);
 }
 
-function setDistanceFromHome(v) {
+function setDistanceFromHome(v: Vehicle) {
   const numberFormatter = new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 0
   });
   v.distanceFromHome = numberFormatter.format(distanceFromHome(v.lat, v.lon));
 }
 
-function updateHistory(vehicles) {
+function updateHistory(vehicles: Vehicle[]) {
   const history = JSON.parse(localStorage.getItem('vehicles') || '{}');
   vehicles.forEach(v => {
     const h = history[v.vin];
@@ -217,6 +251,7 @@ function updateHistory(vehicles) {
 }
 
 async function main() {
+  await load();
   const vehicles = await getAllVehicles();
   const sixSeaters = findMatches(vehicles);
   sixSeaters.forEach(setDistanceFromHome);
@@ -231,7 +266,17 @@ async function main() {
   );
 }
 
-function getUrl({ modelYearCode, vin, dealerCode, statusCode }) {
+function getUrl({
+  modelYearCode,
+  vin,
+  dealerCode,
+  statusCode
+}: {
+  modelYearCode: string;
+  vin: string;
+  dealerCode: string;
+  statusCode: string;
+}) {
   return `https://www.ramtrucks.com/new-inventory/vehicle-details.html?modelYearCode=${modelYearCode}&vin=${vin}&dealerCode=${dealerCode}&radius=100&matchType=X&statusCode=${statusCode}`;
 }
 

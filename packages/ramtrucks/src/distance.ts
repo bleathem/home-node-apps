@@ -26,7 +26,13 @@
 //:::                                                                         :::
 //:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-function distance(lat1, lon1, lat2, lon2, unit) {
+export function distance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+  unit: string
+) {
   if (lat1 == lat2 && lon1 == lon2) {
     return 0;
   } else {
@@ -53,12 +59,7 @@ function distance(lat1, lon1, lat2, lon2, unit) {
   }
 }
 
-function distanceFromHome(lat, lon) {
+export function distanceFromHome(lat: number, lon: number) {
   const home = { lat: 37.21874, lon: -121.92945 };
   return distance(home.lat, home.lon, lat, lon, 'M');
 }
-
-module.exports = {
-  distance,
-  distanceFromHome
-};
