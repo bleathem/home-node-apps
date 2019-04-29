@@ -1,5 +1,5 @@
 {
-  "name": "ramtrucks",
+  "name": "ramtrucks-api",
   "version": "0.0.0",
   "description": "ramtrucks.com screen scraper",
   "main": "index.js",
