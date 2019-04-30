@@ -7,21 +7,16 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-const node_fetch_1 = require("node-fetch");
-const chalk_1 = require("chalk");
+const chalk_1 = __importDefault(require("chalk"));
 const distance_1 = require("./distance");
-const moment = require("moment");
-let localStorage;
-function load() {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (typeof localStorage === 'undefined' || localStorage === null) {
-            let nodeLocalStorage = yield Promise.resolve().then(() => require('node-localstorage'));
-            const LocalStorage = nodeLocalStorage.LocalStorage;
-            localStorage = new LocalStorage('./data');
-        }
-    });
-}
+const moment_1 = __importDefault(require("moment"));
+const node_localstorage_1 = require("node-localstorage");
+const node_fetch_1 = __importDefault(require("node-fetch"));
+const localStorage = new node_localstorage_1.LocalStorage('./data');
 const zips = [
     96001,
     95928,
@@ -63,10 +58,11 @@ const options = {
 };
 function fetchVehicles(zip, year) {
     return __awaiter(this, void 0, void 0, function* () {
-        const qs = Object.entries(Object.assign({}, options, {
+        const yearOptions = Object.assign({}, options, {
             zip: zip,
             modelYearCode: `IUT${year}14`
-        }))
+        });
+        const qs = Object.entries(yearOptions)
             .map(([key, val]) => {
             return `${key}=${val}`;
         })
@@ -74,15 +70,14 @@ function fetchVehicles(zip, year) {
         const json = yield node_fetch_1.default(`https://www.ramtrucks.com/hostd/inventory/getinventoryresults.json?${qs}`).then(res => res.json());
         return json.result.data.vehicles.map((v) => {
             v.zip = zip;
+            v.modelYearCode = yearOptions.modelYearCode;
             return v;
         });
     });
 }
 function fetchDealers(zip) {
     return __awaiter(this, void 0, void 0, function* () {
-        const json = yield node_fetch_1.default(`https://www.ramtrucks.com/bdlws/MDLSDealerLocator?zipCode=${zip}&func=SALES&radius=150&brandCode=R&resultsPerPage=999`, {
-            method: 'GET'
-        }).then(res => res.json());
+        const json = yield node_fetch_1.default(`https://www.ramtrucks.com/bdlws/MDLSDealerLocator?zipCode=${zip}&func=SALES&radius=150&brandCode=R&resultsPerPage=999`).then(res => res.json());
         return json.dealer.reduce((acc, d) => {
             acc[d.dealerCode] = d;
             return acc;
@@ -148,23 +143,21 @@ function findMatches(vehicles) {
         const capacity = v.specs.attributes.filter((attr) => attr.name === 'Seats')[0];
         return capacity.value === 6;
     });
-    sixSeaters.sort((a, b) => {
-        const ret = a.modelYear - b.modelYear;
-        if (ret !== 0) {
-            return ret;
-        }
-        return a.website.localeCompare(b.website);
-    });
     return sixSeaters;
 }
-function printVehicle(v) {
-    v.modelYearCode = options.modelYearCode;
+function printVehicle(v, index) {
     v.url = getUrl(v);
     const vehicleDesc = v.vehicleDesc
-        .replace('LARAMIE', chalk_1.default.black.bgWhite('LARAMIE'))
-        .replace('BIG HORN', chalk_1.default.white.bgRed('BIG HORN'));
+        .replace('LARAMIE', chalk_1.default.rgb(212, 154, 106)('LARAMIE'))
+        .replace('BIG HORN', chalk_1.default.rgb(170, 108, 57)('BIG HORN'));
     const isNew = (Date.now() - v.firstSeen.getTime()) / 60000 < 60;
-    console.log(isNew ? chalk_1.default.white.bgGreen('** New **') : '', v.modelYear, vehicleDesc, `(${v.zip}, ${v.dealerState}, ${v.distanceFromHome} miles) - ${moment(v.firstSeen).fromNow()} ago`);
+    const isGone = Date.now() - v.lastSeen.getTime() > 3600;
+    const distancePercent = 100 - Math.min(v.distanceFromHome / 5, 100);
+    const agePercent = 100 - Math.min(moment_1.default(Date.now()).diff(moment_1.default(v.firstSeen), 'hours'), 100);
+    console.log(`${index}) `, isNew ? chalk_1.default.white.bgGreen('** New **') : '', isGone ? chalk_1.default.white.bgRed('** Gone **') : '', v.modelYear
+        .toString()
+        .replace('2018', chalk_1.default.rgb(64, 127, 127)('2018'))
+        .replace('2019', chalk_1.default.rgb(34, 102, 102)('2019')), vehicleDesc, `(${v.zip}, ${v.dealerState}, `, chalk_1.default.hsl(32, distancePercent, 50)(v.distanceFromHome), ' miles)', ' - ', chalk_1.default.hsl(32, agePercent, 50)(moment_1.default(v.firstSeen).fromNow()), ' ago');
     console.log('   ', v.website);
 }
 function setDistanceFromHome(v) {
@@ -175,22 +168,45 @@ function setDistanceFromHome(v) {
 }
 function updateHistory(vehicles) {
     const history = JSON.parse(localStorage.getItem('vehicles') || '{}');
+    const map = {};
     vehicles.forEach(v => {
         const h = history[v.vin];
         v.firstSeen = h ? new Date(h.firstSeen) : new Date();
-        history[v.vin] = v;
+        v.lastSeen = new Date();
+        map[v.vin] = v;
     });
-    localStorage.setItem('vehicles', JSON.stringify(history));
+    Object.keys(history).forEach(vin => {
+        if (!map[vin]) {
+            const v = history[vin];
+            v.firstSeen = new Date(v.firstSeen);
+            v.lastSeen = new Date(v.lastSeen);
+            map[v.vin] = v;
+        }
+    });
+    return Object.values(map);
 }
-function main() {
+function fetchVehicleMatches() {
     return __awaiter(this, void 0, void 0, function* () {
-        yield load();
         const vehicles = yield getAllVehicles();
         const sixSeaters = findMatches(vehicles);
         sixSeaters.forEach(setDistanceFromHome);
-        updateHistory(sixSeaters);
-        sixSeaters.forEach(printVehicle);
-        console.log(`vehicles: ${vehicles.length}, six seaters: ${sixSeaters.length}`);
+        sixSeaters.sort(compare);
+        const allVehicles = updateHistory(sixSeaters);
+        return allVehicles;
+    });
+}
+exports.fetchVehicleMatches = fetchVehicleMatches;
+function compare(a, b) {
+    const ret = a.modelYear - b.modelYear;
+    if (ret !== 0) {
+        return ret;
+    }
+    return b.distanceFromHome - a.distanceFromHome;
+}
+function main() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const vehicles = yield fetchVehicleMatches();
+        vehicles.forEach(printVehicle);
     });
 }
 function getUrl({ modelYearCode, vin, dealerCode, statusCode }) {

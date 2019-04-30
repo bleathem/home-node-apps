@@ -9,6 +9,8 @@
     "strictFunctionTypes": true,
     "noImplicitThis": true,
     "alwaysStrict": true,
+    "esModuleInterop": true,
+    "jsx": "preserve",
 
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -18,7 +20,7 @@
     "target": "es6",
     "module": "commonjs",
     "moduleResolution": "node",
-    "declaration": true
+    "lib": ["dom", "dom.iterable", "esnext"]
   },
   "exclude": ["node_modules", "**/__tests__/**/*", "**/dist/**/*"],
   "esModuleInterop": true

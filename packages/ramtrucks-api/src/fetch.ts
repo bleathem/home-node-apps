@@ -1,25 +1,19 @@
-import fetch from 'node-fetch';
 // import { inspect } from 'util';
 import * as _ from 'lodash';
 import chalk from 'chalk';
 import { distanceFromHome } from './distance';
-import * as moment from 'moment';
+import moment from 'moment';
 import { LocalStorage } from 'node-localstorage';
-let localStorage: LocalStorage;
+import fetch from 'node-fetch';
 
-async function load() {
-  if (typeof localStorage === 'undefined' || localStorage === null) {
-    let nodeLocalStorage = await import('node-localstorage');
-    const LocalStorage = nodeLocalStorage.LocalStorage;
-    localStorage = new LocalStorage('./data');
-  }
-}
+const localStorage = new LocalStorage('./data');
 
-interface Vehicle {
+export interface Vehicle {
+  lastSeen: Date;
   lat: number;
   lon: number;
   distanceFromHome: any;
-  firstSeen: any;
+  firstSeen: Date;
   vehicleDesc: string;
   url: string;
   modelYearCode: string;
@@ -89,13 +83,14 @@ const options = {
 };
 
 async function fetchVehicles(zip: number, year: number) {
-  const qs = Object.entries({
+  const yearOptions = {
     ...options,
     ...{
       zip: zip,
       modelYearCode: `IUT${year}14`
     }
-  })
+  };
+  const qs = Object.entries(yearOptions)
     .map(([key, val]) => {
       // const val = options[key];
       return `${key}=${val}`;
@@ -106,16 +101,14 @@ async function fetchVehicles(zip: number, year: number) {
   ).then(res => res.json());
   return json.result.data.vehicles.map((v: Vehicle) => {
     v.zip = zip;
+    v.modelYearCode = yearOptions.modelYearCode;
     return v;
   });
 }
 
 async function fetchDealers(zip: number) {
   const json = await fetch(
-    `https://www.ramtrucks.com/bdlws/MDLSDealerLocator?zipCode=${zip}&func=SALES&radius=150&brandCode=R&resultsPerPage=999`,
-    {
-      method: 'GET'
-    }
+    `https://www.ramtrucks.com/bdlws/MDLSDealerLocator?zipCode=${zip}&func=SALES&radius=150&brandCode=R&resultsPerPage=999`
   ).then(res => res.json());
   return json.dealer.reduce(
     (acc: { [dealerCode: string]: Dealer }, d: Dealer) => {
@@ -202,32 +195,35 @@ function findMatches(vehicles: Vehicle[]) {
     return capacity.value === 6;
   });
 
-  sixSeaters.sort((a, b) => {
-    const ret = a.modelYear - b.modelYear;
-    if (ret !== 0) {
-      return ret;
-    }
-    return a.website.localeCompare(b.website);
-  });
-
   return sixSeaters;
 }
 
-function printVehicle(v: Vehicle) {
-  v.modelYearCode = options.modelYearCode;
+function printVehicle(v: Vehicle, index: number) {
   v.url = getUrl(v);
   // console.log(inspect(v, false, Infinity, true));
   const vehicleDesc = v.vehicleDesc
-    .replace('LARAMIE', chalk.black.bgWhite('LARAMIE'))
-    .replace('BIG HORN', chalk.white.bgRed('BIG HORN'));
+    .replace('LARAMIE', chalk.rgb(212, 154, 106)('LARAMIE'))
+    .replace('BIG HORN', chalk.rgb(170, 108, 57)('BIG HORN'));
   const isNew = (Date.now() - v.firstSeen.getTime()) / 60000 < 60; // minutes
+  const isGone = Date.now() - v.lastSeen.getTime() > 3600;
+  const distancePercent = 100 - Math.min(v.distanceFromHome / 5, 100);
+  const agePercent =
+    100 - Math.min(moment(Date.now()).diff(moment(v.firstSeen), 'hours'), 100);
   console.log(
+    `${index}) `,
     isNew ? chalk.white.bgGreen('** New **') : '',
-    v.modelYear,
+    isGone ? chalk.white.bgRed('** Gone **') : '',
+    v.modelYear
+      .toString()
+      .replace('2018', chalk.rgb(64, 127, 127)('2018'))
+      .replace('2019', chalk.rgb(34, 102, 102)('2019')),
     vehicleDesc,
-    `(${v.zip}, ${v.dealerState}, ${v.distanceFromHome} miles) - ${moment(
-      v.firstSeen
-    ).fromNow()} ago`
+    `(${v.zip}, ${v.dealerState}, `,
+    chalk.hsl(32, distancePercent, 50)(v.distanceFromHome),
+    ' miles)',
+    ' - ',
+    chalk.hsl(32, agePercent, 50)(moment(v.firstSeen).fromNow()),
+    ' ago'
   );
   console.log('   ', v.website);
 }
@@ -239,31 +235,50 @@ function setDistanceFromHome(v: Vehicle) {
   v.distanceFromHome = numberFormatter.format(distanceFromHome(v.lat, v.lon));
 }
 
-function updateHistory(vehicles: Vehicle[]) {
-  const history = JSON.parse(localStorage.getItem('vehicles') || '{}');
+function updateHistory(vehicles: Vehicle[]): Vehicle[] {
+  const history: { [vin: string]: Vehicle } = JSON.parse(
+    localStorage.getItem('vehicles') || '{}'
+  );
+  const map: { [vin: string]: Vehicle } = {};
   vehicles.forEach(v => {
     const h = history[v.vin];
     v.firstSeen = h ? new Date(h.firstSeen) : new Date();
-    history[v.vin] = v;
+    v.lastSeen = new Date();
+    map[v.vin] = v;
   });
-  // console.log(history);
-  localStorage.setItem('vehicles', JSON.stringify(history));
+  Object.keys(history).forEach(vin => {
+    if (!map[vin]) {
+      const v = history[vin];
+      v.firstSeen = new Date(v.firstSeen);
+      v.lastSeen = new Date(v.lastSeen);
+      map[v.vin] = v;
+    }
+  });
+
+  return Object.values(map);
 }
 
-async function main() {
-  await load();
+export async function fetchVehicleMatches(): Promise<Vehicle[]> {
   const vehicles = await getAllVehicles();
   const sixSeaters = findMatches(vehicles);
   sixSeaters.forEach(setDistanceFromHome);
-  updateHistory(sixSeaters);
+  sixSeaters.sort(compare);
+  const allVehicles = updateHistory(sixSeaters);
+  return allVehicles;
+}
 
-  sixSeaters.forEach(printVehicle);
+function compare(a: Vehicle, b: Vehicle) {
+  const ret = a.modelYear - b.modelYear;
+  if (ret !== 0) {
+    return ret;
+  }
+  return b.distanceFromHome - a.distanceFromHome;
+}
 
-  // console.log(inspect(sixSeaters[0], false, Infinity, true));
-
-  console.log(
-    `vehicles: ${vehicles.length}, six seaters: ${sixSeaters.length}`
-  );
+async function main() {
+  const vehicles = await fetchVehicleMatches();
+  vehicles.forEach(printVehicle);
+  // console.log(inspect(vehicles[0], false, Infinity, true));
 }
 
 function getUrl({

@@ -2,7 +2,7 @@
   "name": "ramtrucks-api",
   "version": "0.0.0",
   "description": "ramtrucks.com screen scraper",
-  "main": "index.js",
+  "main": "dist/fetch.js",
   "scripts": {
     "start": "node dist/fetch.js",
     "build": "tsc",
