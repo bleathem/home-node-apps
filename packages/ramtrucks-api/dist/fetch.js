@@ -11,9 +11,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const chalk_1 = __importDefault(require("chalk"));
 const distance_1 = require("./distance");
-const moment_1 = __importDefault(require("moment"));
 const node_localstorage_1 = require("node-localstorage");
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const localStorage = new node_localstorage_1.LocalStorage('./data');
@@ -71,6 +69,7 @@ function fetchVehicles(zip, year) {
         return json.result.data.vehicles.map((v) => {
             v.zip = zip;
             v.modelYearCode = yearOptions.modelYearCode;
+            v.url = getUrl(v);
             return v;
         });
     });
@@ -145,21 +144,6 @@ function findMatches(vehicles) {
     });
     return sixSeaters;
 }
-function printVehicle(v, index) {
-    v.url = getUrl(v);
-    const vehicleDesc = v.vehicleDesc
-        .replace('LARAMIE', chalk_1.default.rgb(212, 154, 106)('LARAMIE'))
-        .replace('BIG HORN', chalk_1.default.rgb(170, 108, 57)('BIG HORN'));
-    const isNew = (Date.now() - v.firstSeen.getTime()) / 60000 < 60;
-    const isGone = Date.now() - v.lastSeen.getTime() > 3600;
-    const distancePercent = 100 - Math.min(v.distanceFromHome / 5, 100);
-    const agePercent = 100 - Math.min(moment_1.default(Date.now()).diff(moment_1.default(v.firstSeen), 'hours'), 100);
-    console.log(`${index}) `, isNew ? chalk_1.default.white.bgGreen('** New **') : '', isGone ? chalk_1.default.white.bgRed('** Gone **') : '', v.modelYear
-        .toString()
-        .replace('2018', chalk_1.default.rgb(64, 127, 127)('2018'))
-        .replace('2019', chalk_1.default.rgb(34, 102, 102)('2019')), vehicleDesc, `(${v.zip}, ${v.dealerState}, `, chalk_1.default.hsl(32, distancePercent, 50)(v.distanceFromHome), ' miles)', ' - ', chalk_1.default.hsl(32, agePercent, 50)(moment_1.default(v.firstSeen).fromNow()), ' ago');
-    console.log('   ', v.website);
-}
 function setDistanceFromHome(v) {
     const numberFormatter = new Intl.NumberFormat('en-US', {
         maximumFractionDigits: 0
@@ -203,14 +187,7 @@ function compare(a, b) {
     }
     return b.distanceFromHome - a.distanceFromHome;
 }
-function main() {
-    return __awaiter(this, void 0, void 0, function* () {
-        const vehicles = yield fetchVehicleMatches();
-        vehicles.forEach(printVehicle);
-    });
-}
 function getUrl({ modelYearCode, vin, dealerCode, statusCode }) {
     return `https://www.ramtrucks.com/new-inventory/vehicle-details.html?modelYearCode=${modelYearCode}&vin=${vin}&dealerCode=${dealerCode}&radius=100&matchType=X&statusCode=${statusCode}`;
 }
-main().catch(console.error);
 //# sourceMappingURL=fetch.js.map

@@ -3,8 +3,9 @@
   "version": "0.0.0",
   "description": "ramtrucks.com screen scraper",
   "main": "dist/fetch.js",
+  "cli": "dist/cli.js",
   "scripts": {
-    "start": "node dist/fetch.js",
+    "start": "node dist/cli.js",
     "build": "tsc",
     "build:watch": "tsc --watch",
     "clean": "rm -rf dist",
