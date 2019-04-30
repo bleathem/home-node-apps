@@ -1,10 +1,9 @@
 // import { inspect } from 'util';
 import * as _ from 'lodash';
 import { distanceFromHome } from './distance';
-import { LocalStorage } from 'node-localstorage';
-import fetch from 'node-fetch';
 
-const localStorage = new LocalStorage('./data');
+let localStorage: Window['localStorage'];
+let fetch: Window['fetch'];
 
 export interface Vehicle {
   lastSeen: Date;
@@ -79,6 +78,25 @@ const options = {
   sortBy: '0',
   modelYearCode: ''
 };
+
+declare var window: Window;
+
+/**
+ * Polyfill DOM APIs when running in node.js
+ */
+async function init() {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    localStorage = window.localStorage;
+  } else {
+    const { LocalStorage } = await import('node-localstorage');
+    localStorage = new LocalStorage('./data');
+  }
+  if (typeof window !== 'undefined' && window.fetch) {
+    fetch = window.fetch;
+  } else {
+    fetch = ((await import('node-fetch')) as any) as Window['fetch'];
+  }
+}
 
 async function fetchVehicles(zip: number, year: number) {
   const yearOptions = {
@@ -228,6 +246,7 @@ function updateHistory(vehicles: Vehicle[]): Vehicle[] {
 }
 
 export async function fetchVehicleMatches(): Promise<Vehicle[]> {
+  await init();
   const vehicles = await getAllVehicles();
   const sixSeaters = findMatches(vehicles);
   sixSeaters.forEach(setDistanceFromHome);

@@ -7,14 +7,17 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (Object.hasOwnProperty.call(mod, k)) result[k] = mod[k];
+    result["default"] = mod;
+    return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const distance_1 = require("./distance");
-const node_localstorage_1 = require("node-localstorage");
-const node_fetch_1 = __importDefault(require("node-fetch"));
-const localStorage = new node_localstorage_1.LocalStorage('./data');
+let localStorage;
+let fetch;
 const zips = [
     96001,
     95928,
@@ -54,6 +57,23 @@ const options = {
     sortBy: '0',
     modelYearCode: ''
 };
+function init() {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage = window.localStorage;
+        }
+        else {
+            const { LocalStorage } = yield Promise.resolve().then(() => __importStar(require('node-localstorage')));
+            localStorage = new LocalStorage('./data');
+        }
+        if (typeof window !== 'undefined' && window.fetch) {
+            fetch = window.fetch;
+        }
+        else {
+            fetch = (yield Promise.resolve().then(() => __importStar(require('node-fetch'))));
+        }
+    });
+}
 function fetchVehicles(zip, year) {
     return __awaiter(this, void 0, void 0, function* () {
         const yearOptions = Object.assign({}, options, {
@@ -65,7 +85,7 @@ function fetchVehicles(zip, year) {
             return `${key}=${val}`;
         })
             .join('&');
-        const json = yield node_fetch_1.default(`https://www.ramtrucks.com/hostd/inventory/getinventoryresults.json?${qs}`).then(res => res.json());
+        const json = yield fetch(`https://www.ramtrucks.com/hostd/inventory/getinventoryresults.json?${qs}`).then(res => res.json());
         return json.result.data.vehicles.map((v) => {
             v.zip = zip;
             v.modelYearCode = yearOptions.modelYearCode;
@@ -76,7 +96,7 @@ function fetchVehicles(zip, year) {
 }
 function fetchDealers(zip) {
     return __awaiter(this, void 0, void 0, function* () {
-        const json = yield node_fetch_1.default(`https://www.ramtrucks.com/bdlws/MDLSDealerLocator?zipCode=${zip}&func=SALES&radius=150&brandCode=R&resultsPerPage=999`).then(res => res.json());
+        const json = yield fetch(`https://www.ramtrucks.com/bdlws/MDLSDealerLocator?zipCode=${zip}&func=SALES&radius=150&brandCode=R&resultsPerPage=999`).then(res => res.json());
         return json.dealer.reduce((acc, d) => {
             acc[d.dealerCode] = d;
             return acc;
@@ -171,6 +191,7 @@ function updateHistory(vehicles) {
 }
 function fetchVehicleMatches() {
     return __awaiter(this, void 0, void 0, function* () {
+        yield init();
         const vehicles = yield getAllVehicles();
         const sixSeaters = findMatches(vehicles);
         sixSeaters.forEach(setDistanceFromHome);
