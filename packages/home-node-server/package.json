@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "node.js server for home apps",
   "main": "dist/index.js",
+  "types": "dist/",
   "scripts": {
     "start": "node dist/index.js",
     "build": "tsc",
@@ -18,7 +19,8 @@
   "dependencies": {
     "eslint": "^5.16.0",
     "express": "^4.16.4",
-    "lodash": "^4.17.11"
+    "lodash": "^4.17.11",
+    "ramtrucks-api": "0.1.0"
   },
   "devDependencies": {
     "@types/express": "^4.16.1",
