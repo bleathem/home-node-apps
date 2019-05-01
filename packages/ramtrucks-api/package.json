@@ -1,6 +1,7 @@
 {
   "name": "ramtrucks-api",
-  "version": "0.0.0",
+  "private": true,
+  "version": "0.1.0",
   "description": "ramtrucks.com screen scraper",
   "main": "dist/fetch.js",
   "cli": "dist/cli.js",

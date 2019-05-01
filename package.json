@@ -5,7 +5,7 @@
     "packages/*/*",
     "packages/[^@]*"
   ],
-  "name": "ramtrucks",
+  "name": "home-node-apps",
   "scripts": {
     "build": "lerna run build",
     "clean": "lerna run clean",
